@@ -1,15 +1,15 @@
-# NYC Taxi Trip Analytics Backend
+```markdown
+# NYC Taxi Trip Analytics – Backend
 
-Backend for an NYC Yellow Taxi analytics dashboard using PostgreSQL + Flask.
+Backend for an NYC Yellow Taxi analytics dashboard using **PostgreSQL + Flask**.
 
-This project:
+This service:
 
-- Loads TLC yellow taxi trip data (Parquet) into PostgreSQL
-- Normalizes the schema into lookup tables + a `trips` fact table
-- Adds indexes optimized for common query patterns
-- Creates several materialized views for fast analytics
+- Loads TLC yellow taxi trip data (Parquet) into PostgreSQL  
+- Normalizes the schema into lookup tables + a `trips` fact table  
+- Builds materialized views + indexes for fast analytics  
 - Exposes REST API endpoints for:
-  - Trip analytics
+  - Trip analytics (KPIs, distributions)
   - Map / zone density
   - Fare & tip analysis
   - Peak hour detection
@@ -17,63 +17,196 @@ This project:
 
 ---
 
-## 1. Database Schema
+## 1. Setup & Running (Backend Only)
 
-All tables live in the schema defined by `SCHEMA_NAME` (default: `public`).
+### 1.1 Download data
 
-### 1.1 Core Tables
+Download **2025 January–August** Yellow Taxi Trip Record Parquet files from:
+
+> https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page
+
+```text
+backend/new_data/
+    yellow_tripdata_2025-01.parquet
+    yellow_tripdata_2025-02.parquet
+    yellow_tripdata_2025-03.parquet
+    yellow_tripdata_2025-04.parquet
+    yellow_tripdata_2025-05.parquet
+    yellow_tripdata_2025-06.parquet
+    yellow_tripdata_2025-07.parquet
+    yellow_tripdata_2025-08.parquet
+````
+
+Also place the TLC zone lookup file (e.g. `taxi_zone_lookup.csv`) in `backend/`
+or point to it via `ZONES_CSV_PATH`.
+
+---
+
+### 1.2 Create `.env`
+
+In the **backend** folder, create a file named `.env`:
+
+```env
+PGUSER=your_postgres_user
+PGPASSWORD=your_postgres_password
+PGHOST=localhost
+PGPORT=5432
+
+DB_NAME=nyc_taxi
+SCHEMA_NAME=public
+
+# Optional: custom path to TLC zone lookup
+# ZONES_CSV_PATH=/absolute/path/to/taxi_zone_lookup.csv
+```
+
+> ⚠️ **Important**
+> The scripts target the database named `nyc_taxi`.
+> `setup_and_load.py` will **drop and recreate** the `trips` table if `DROP_OLD_TRIPS = True`.
+> If you already have data in `nyc_taxi.trips`, it will be deleted and replaced with this new load.
+
+---
+
+### 1.3 Install Python dependencies
+
+From the **backend** folder:
+
+```bash
+pip install -r requirements.txt
+```
+
+`requirements.txt` includes:
+
+* Flask, flask-cors, flask-caching
+* SQLAlchemy, psycopg2-binary
+* pandas, pyarrow
+* python-dotenv
+
+---
+
+### 1.4 Load data and build analytics layer
+
+From the **backend** folder, run in this order:
+
+1. **Load data into PostgreSQL**
+
+   ```bash
+   python3 setup_and_load.py
+   ```
+
+   This will:
+
+   * Create database `nyc_taxi` (if it doesn’t exist)
+   * Ensure the schema exists (`SCHEMA_NAME`, default `public`)
+   * Create lookup tables: `vendors`, `payments`, `zones`
+   * Load `taxi_zone_lookup.csv` into `zones`
+   * Create the `trips` fact table
+   * Load all Parquet files from `new_data/` into `trips`
+   * Run `VACUUM ANALYZE` on `trips`
+
+2. **Create materialized views**
+
+   ```bash
+   python3 create_views.py
+   ```
+
+   This script creates materialized views such as:
+
+   * `trip_analytics_summary`
+   * `trip_zone_density`
+   * `peak_hours`
+   * `vendor_performance`
+
+3. **Create indexes**
+
+   ```bash
+   python3 indexes.py
+   ```
+
+   This script ensures:
+
+   * Core indexes on `trips` (time, zone, vendor, payment, etc.)
+   * Indexes on analytics materialized views (including `analytics_*` views used by the dashboard).
+
+---
+
+### 1.5 Run the backend server
+
+From the **backend** folder:
+
+```bash
+python3 -m app.main
+```
+
+By default the server runs on:
+
+```text
+http://127.0.0.1:5001/
+```
+
+Health check:
+
+```text
+GET /api/health
+```
+
+---
+
+## 2. Database Schema
+
+All tables live in the schema given by `SCHEMA_NAME` (default: `public`).
+
+### 2.1 Lookup Tables
 
 #### `vendors`
-
-Lookup table for taxi vendors.
 
 ```sql
 vendors (
   vendor_id VARCHAR(10) PRIMARY KEY,  -- 'CMT', 'VTS'
-  name      TEXT NOT NULL             -- full vendor name
-)
-Loaded by create_reference_tables() in setup_and_load.py.
+  name      TEXT NOT NULL
+);
+```
 
-payments
-Lookup table for payment types.
+Populated by `create_reference_tables()` in `setup_and_load.py`.
 
-sql
-Copy code
+#### `payments`
+
+```sql
 payments (
-  payment_id   INT PRIMARY KEY,       -- 1..6
-  payment_type VARCHAR(20) UNIQUE NOT NULL,  -- 'CRD', 'CSH', ...
-  description  TEXT                   -- human-readable description
-)
+  payment_id   INT PRIMARY KEY,            -- 1..6
+  payment_type VARCHAR(20) UNIQUE NOT NULL,
+  description  TEXT
+);
+```
+
 Mapping used in ETL:
 
-1 → CRD (Credit Card)
+* 1 → CRD (Credit Card)
+* 2 → CSH (Cash)
+* 3 → NOC (No Charge)
+* 4 → DIS (Dispute)
+* 5 → UNK (Unknown / fallback)
+* 6 → VOD (Voided Trip)
 
-2 → CSH (Cash)
+#### `zones`
 
-3 → NOC (No Charge)
-
-4 → DIS (Dispute)
-
-5 → UNK (Unknown / fallback)
-
-6 → VOD (Voided Trip)
-
-zones
-TLC taxi zone lookup table, populated from taxi_zone_lookup.csv.
-
-sql
-Copy code
+```sql
 zones (
   zone_id      INT PRIMARY KEY,   -- TLC LocationID
   borough      TEXT,
   zone_name    TEXT,
   service_zone TEXT
-)
-1.2 Fact Table: trips
+);
+```
+
+Loaded from `taxi_zone_lookup.csv` (or `ZONES_CSV_PATH`).
+
+---
+
+### 2.2 Fact Table: `trips`
+
 Main table storing each completed trip.
 
-sql
-Copy code
+```sql
 trips (
   trip_id           SERIAL PRIMARY KEY,
 
@@ -88,7 +221,7 @@ trips (
   total_amount      FLOAT,
   passenger_count   INT,
 
-  -- Foreign keys into lookup tables
+  -- Foreign keys
   pickup_zone_id    INT REFERENCES zones(zone_id),
   dropoff_zone_id   INT REFERENCES zones(zone_id),
   vendor_id         VARCHAR(10) REFERENCES vendors(vendor_id),
@@ -100,7 +233,7 @@ trips (
   dropoff_long      FLOAT,
   dropoff_lat       FLOAT,
 
-  -- Generated / derived columns
+  -- Derived columns
   pickup_weekday    INT GENERATED ALWAYS AS (
                        EXTRACT(DOW FROM pickup_time)
                      ) STORED,   -- 0=Sunday .. 6=Saturday
@@ -112,280 +245,213 @@ trips (
                      ) STORED,
 
   -- Extra fare-related fields (nullable)
-  ratecodeid             INT NULL,
-  store_and_fwd_flag     VARCHAR(1) NULL,
-  extra                  FLOAT NULL,
-  mta_tax                FLOAT NULL,
-  tolls_amount           FLOAT NULL,
-  improvement_surcharge  FLOAT NULL,
-  congestion_surcharge   FLOAT NULL,
-  airport_fee            FLOAT NULL,
-  cbd_congestion_fee     FLOAT NULL
+  ratecodeid             INT,
+  store_and_fwd_flag     VARCHAR(1),
+  extra                  FLOAT,
+  mta_tax                FLOAT,
+  tolls_amount           FLOAT,
+  improvement_surcharge  FLOAT,
+  congestion_surcharge   FLOAT,
+  airport_fee            FLOAT,
+  cbd_congestion_fee     FLOAT
 );
-Columns are populated from the TLC Parquet file via CSV_TO_DB_RENAME and coerce_types() in setup_and_load.py.
+```
 
-1.3 Materialized Views
-Created by create_view.py (and/or your analytics MV script):
+Columns are populated from TLC Parquet via `CSV_TO_DB_RENAME` + `coerce_types()` in `setup_and_load.py`.
 
-trip_analytics_summary
+---
 
-Aggregates average fare, distance, and duration by (borough, weekday, hour).
+### 2.3 Materialized Views (summary)
 
-Used for the trip analytics dashboard.
+Created by `create_views.py` (and/or related scripts):
 
-trip_zone_density
+* **`trip_analytics_summary`**
+  Average fare, distance, and duration grouped by `(borough, weekday, hour)`.
 
-Aggregates pickups and dropoffs per zone pair (pickup_zone_id, dropoff_zone_id).
+* **`trip_zone_density`**
+  Trip counts per `(pickup_zone_id, dropoff_zone_id)` pair.
 
-peak_hours
+* **`peak_hours`**
+  Trip counts by `(pickup_weekday, pickup_hour)` with a rank for busiest times.
 
-Aggregates trip counts by (pickup_weekday, pickup_hour) and ranks busiest times.
+* **`vendor_performance`**
+  Per-vendor stats: trip count, average fare, average total, total revenue.
 
-vendor_performance
+Additional `analytics_*` materialized views (e.g. `analytics_kpis`, `analytics_payment_mix`,
+`analytics_trips_by_borough`, `analytics_trips_by_weekday`, `analytics_trips_by_hour`) may also be created for the dashboard.
 
-Aggregates per-vendor stats: trip count, average fare, average total_amount.
+---
 
-Additionally, separate analytics materialized views may be used for the landing dashboard (e.g., analytics_kpis, analytics_payment_mix, analytics_trips_by_borough, analytics_trips_by_weekday, analytics_trips_by_hour), depending on how you wired analytics.py.
+### 2.4 Indexes (summary)
 
-1.4 Indexes
-Created in two places:
+On **`trips`**:
 
-On base table trips (in create_view.py and/or indexes.py):
+* `(pickup_weekday, pickup_hour)` – time-slice queries
+* `pickup_time` – date range filters
+* `pickup_zone_id`, `dropoff_zone_id`, `(pickup_zone_id, dropoff_zone_id)` – zone density
+* `payment_id` – payment filters
+* `vendor_id` – vendor comparison
 
-(pickup_weekday, pickup_hour) – for time-slice queries
+On **materialized views** (examples):
 
-pickup_time – for date range filters
+* `trip_analytics_summary (borough, weekday, hour)`
+* `trip_zone_density (pickup_zone_id)` and `(pickup_zone_id, dropoff_zone_id)`
+* `peak_hours (rank, weekday, hour)` and `(weekday, hour)`
+* `vendor_performance (vendor, total_trips)`
 
-pickup_zone_id, dropoff_zone_id, (pickup_zone_id, dropoff_zone_id) – for zone density
+Plus additional single-column indexes on `analytics_*` views.
 
-payment_id – for payment-type filters
+---
 
-vendor_id – for vendor-based filters
+## 3. API Endpoints
 
-On materialized views (for fast lookups):
+All endpoints are served from the backend (default: `http://127.0.0.1:5001`).
 
-trip_analytics_summary (borough, weekday, hour)
+Common query parameters (where supported):
 
-trip_zone_density (pickup_zone_id) and (pickup_zone_id, dropoff_zone_id)
+* `vendor_id` – `'CMT'` or `'VTS'`
+* `payment_id` – integer `1–6`
+* `weekday` – `0–6` (0 = Sunday)
+* `hour` – `0–23`
+* `start`, `end` – date or timestamp strings (`YYYY-MM-DD` or ISO)
 
-peak_hours (rank, weekday, hour) and (weekday, hour)
+All responses are JSON and include a `metadata` field with row counts, filters, execution time, and timestamp.
 
-vendor_performance (vendor, total_trips)
+---
 
-Plus extra single-column indexes on the analytics_* views if you use them.
+### 3.1 Health
 
-2. File Overview & Run Order
-2.1 Key Scripts
-setup_and_load.py
+**GET** `/api/health`
+Simple health check + DB connectivity.
 
-Creates the database (if needed)
+---
 
-Ensures schema exists
+### 3.2 Trip Analytics Dashboard
 
-Creates lookup tables (vendors, payments, zones)
+**GET** `/api/trip-analytics`
 
-Loads taxi_zone_lookup.csv into zones
+Uses analytics materialized views to return:
 
-Creates trips table
+* Global KPIs (`analytics_kpis`)
+* Payment mix (`analytics_payment_mix`)
+* Trips by borough (`analytics_trips_by_borough`)
+* Trips by weekday (`analytics_trips_by_weekday`)
+* Trips by hour (`analytics_trips_by_hour`)
 
-Loads TLC Parquet data from new_data/yellow_tripdata_2025-01.parquet
+Example:
 
-Runs VACUUM ANALYZE on trips
-
-create_view.py
-
-Creates materialized views:
-
-trip_analytics_summary
-
-trip_zone_density
-
-peak_hours
-
-vendor_performance
-
-Also creates related indexes on those views and on trips.
-
-indexes.py
-
-Creates/ensures:
-
-Base indexes on trips (time, zone, vendor, payment)
-
-Indexes on analytics-oriented MVs (analytics_*) for the dashboard.
-
-Flask routes (under app/routes/):
-
-analytics.py – landing dashboard / trip analytics (MVs)
-
-map_view.py – zone-based density endpoint
-
-fare_trip.py – fare vs tip analysis
-
-peak_hours.py – peak hour detection
-
-vendor_performance.py – vendor comparison
-
-3. Setup & Running Order
-3.1 Prerequisites
-Python 3.10+ (you are using 3.13)
-
-PostgreSQL running locally on localhost:5432 (or adjust via env)
-
-pip install for dependencies (typical stack):
-
-psycopg2-binary
-
-SQLAlchemy
-
-pandas
-
-python-dotenv
-
-Flask
-
-Flask-Cors
-
-Flask-Caching
-
-(If you have a requirements.txt, just run pip install -r requirements.txt.)
-
-3.2 Environment Variables
-Create a .env file in the project root:
-
-env
-Copy code
-PGUSER=your_postgres_user
-PGPASSWORD=your_postgres_password
-PGHOST=localhost
-PGPORT=5432
-
-DB_NAME=nyc_taxi
-SCHEMA_NAME=public
-
-# Optional: custom path to TLC zone lookup
-ZONES_CSV_PATH=taxi_zone_lookup.csv
-3.3 Data Files
-Place TLC taxi zone lookup CSV at:
-
-backend/taxi_zone_lookup.csv or set ZONES_CSV_PATH.
-
-Place the Parquet trip file at:
-
-backend/new_data/yellow_tripdata_2025-01.parquet
-backend/new_data/yellow_tripdata_2025-02.parquet
-backend/new_data/yellow_tripdata_2025-03.parquet
-backend/new_data/yellow_tripdata_2025-04.parquet
-backend/new_data/yellow_tripdata_2025-05.parquet
-backend/new_data/yellow_tripdata_2025-06.parquet
-backend/new_data/yellow_tripdata_2025-07.parquet
-backend/new_data/yellow_tripdata_2025-08.parquet
-
-
-
-You can later add more monthly Parquet files to PARQUET_FILES if you want to load more data.
-
-3.4 Run Order (One-Time / After Data Updates)
-Load data into PostgreSQL
-
-bash
-Copy code
-python3 setup_and_load.py
-This will:
-
-Create DB nyc_taxi (if missing)
-
-Create schema + tables
-
-Load zones + trips
-
-Run VACUUM ANALYZE
-
-Create materialized views (feature-oriented)
-
-bash
-Copy code
-python3 create_view.py
-This builds:
-
-trip_analytics_summary
-
-trip_zone_density
-
-peak_hours
-
-vendor_performance
-
-and key indexes for them.
-
-Create / refresh schema indexes (and analytics MV indexes)
-
-bash
-Copy code
-python3 indexes.py
-This ensures:
-
-Core indexes on trips
-
-Indexes on analytics dashboard MVs (analytics_*) if you’re using them.
-
-Run the Flask API
-
-From the project root:
-
-bash
-Copy code
-export FLASK_APP=app
-export FLASK_ENV=development   # optional
-flask run --port 5001
-Your API will be available at:
-
-http://127.0.0.1:5001/
-
-4. API Overview (Quick Summary)
-All endpoints use JSON and live under http://127.0.0.1:5001.
-
-Feature	Method	Path
-Analytics dashboard (overview)	GET	/api/trip-analytics
-Refresh analytics materialized views	POST	/api/refresh-trip-analytics
-Zone density (map view)	GET	/api/map-density
-Fare & tip analysis	GET	/api/fare-tip-analysis
-Peak hours (top 10)	GET	/api/peak-hours
-Vendor performance (CMT vs VTS)	GET	/api/vendor-performance
-
-Each endpoint accepts optional filters such as:
-
-vendor_id (CMT, VTS)
-
-payment_id (1–6)
-
-weekday (0–6)
-
-hour (0–23)
-
-start, end (date strings YYYY-MM-DD)
-
-Responses always contain:
-
-metadata – row counts, filters used, execution time, timestamp
-
-data – list of result objects
-
-You can test, for example:
-
-bash
-Copy code
-# Analytics dashboard
+```bash
 curl http://127.0.0.1:5001/api/trip-analytics
+```
 
-# Fare & tip analysis for credit card trips on Fridays
-curl "http://127.0.0.1:5001/api/fare-tip-analysis?payment_id=1&weekday=5"
+---
 
-# Map density for pickups by zone
+### 3.3 Refresh Analytics Views
+
+**POST** `/api/refresh-trip-analytics`
+
+Refreshes the analytics MVs after new data is loaded:
+
+* `analytics_kpis`
+* `analytics_payment_mix`
+* `analytics_trips_by_borough`
+* `analytics_trips_by_weekday`
+* `analytics_trips_by_hour`
+
+---
+
+### 3.4 Map / Zone Density
+
+**GET** `/api/map-density`
+
+Query parameters:
+
+* `type` – `"pickup"` (default) or `"dropoff"`
+* `limit` – max number of zones (default `150`)
+* Optional filters: `weekday`, `hour`, `vendor_id`, `payment_id`, `start`, `end`
+
+Example:
+
+```bash
 curl "http://127.0.0.1:5001/api/map-density?type=pickup&weekday=4&hour=18"
+```
 
-# Top 10 peak hours overall
+---
+
+### 3.5 Fare & Tip Analysis
+
+**GET** `/api/fare-tip-analysis`
+
+Filters (all optional):
+
+* `vendor_id`
+* `payment_id`
+* `weekday`
+* `hour`
+* `start`
+* `end`
+
+Returns avg fare, avg tip, tip-to-fare ratio and trip count grouped by weekday, hour, and payment type.
+
+Example:
+
+```bash
+curl "http://127.0.0.1:5001/api/fare-tip-analysis?payment_id=1&weekday=5"
+```
+
+---
+
+### 3.6 Peak Hours
+
+**GET** `/api/peak-hours`
+
+Filters (optional):
+
+* `vendor_id`
+* `payment_id`
+* `start`
+* `end`
+
+Returns top 10 busiest `(weekday, hour)` combinations with:
+
+* `trip_count`
+* `avg_fare`
+* `avg_distance`
+* `avg_duration_min`
+
+Example:
+
+```bash
 curl http://127.0.0.1:5001/api/peak-hours
+```
 
-# Vendor performance, cash only
-curl "http://127.0.0.1:5001/api/vendor-performance?payment_id=2" 
+---
+
+### 3.7 Vendor Performance
+
+**GET** `/api/vendor-performance`
+
+Filters (optional):
+
+* `payment_id`
+* `weekday`
+* `hour`
+* `start`
+* `end`
+
+Returns per-vendor metrics:
+
+* `avg_fare`
+* `avg_tip`
+* `avg_distance`
+* `total_revenue`
+* `trip_count`
+
+Example:
+
+```bash
+curl "http://127.0.0.1:5001/api/vendor-performance?payment_id=2"
+```
+
+---
+
