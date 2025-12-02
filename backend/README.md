@@ -268,11 +268,20 @@ ZONES_CSV_PATH=taxi_zone_lookup.csv
 3.3 Data Files
 Place TLC taxi zone lookup CSV at:
 
-./taxi_zone_lookup.csv or set ZONES_CSV_PATH.
+backend/taxi_zone_lookup.csv or set ZONES_CSV_PATH.
 
 Place the Parquet trip file at:
 
-./new_data/yellow_tripdata_2025-01.parquet
+backend/new_data/yellow_tripdata_2025-01.parquet
+backend/new_data/yellow_tripdata_2025-02.parquet
+backend/new_data/yellow_tripdata_2025-03.parquet
+backend/new_data/yellow_tripdata_2025-04.parquet
+backend/new_data/yellow_tripdata_2025-05.parquet
+backend/new_data/yellow_tripdata_2025-06.parquet
+backend/new_data/yellow_tripdata_2025-07.parquet
+backend/new_data/yellow_tripdata_2025-08.parquet
+
+
 
 You can later add more monthly Parquet files to PARQUET_FILES if you want to load more data.
 
