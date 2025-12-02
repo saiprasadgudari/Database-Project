@@ -1,4 +1,3 @@
-```markdown
 # NYC Taxi Trip Analytics – Backend
 
 Backend for an NYC Yellow Taxi analytics dashboard using **PostgreSQL + Flask**.
