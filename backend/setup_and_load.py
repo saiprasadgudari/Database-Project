@@ -21,6 +21,16 @@ SCHEMA_NAME = os.environ.get("SCHEMA_NAME", "public")
 # NEW — ONLY use these Parquet files (no CSV fallback)
 PARQUET_FILES = [
     "new_data/yellow_tripdata_2025-01.parquet",
+    "new_data/yellow_tripdata_2025-02.parquet",
+    "new_data/yellow_tripdata_2025-03.parquet",
+    "new_data/yellow_tripdata_2025-04.parquet",
+    "new_data/yellow_tripdata_2025-05.parquet",
+    "new_data/yellow_tripdata_2025-06.parquet",
+    "new_data/yellow_tripdata_2025-07.parquet",
+    "new_data/yellow_tripdata_2025-08.parquet",
+
+
+
 ]
 
 DROP_OLD_TRIPS = True
