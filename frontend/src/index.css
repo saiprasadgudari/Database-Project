@@ -1,0 +1,518 @@
+/* ----------------------------------------------------------
+   External styles
+---------------------------------------------------------- */
+
+/* Leaflet map default styles */
+@import "leaflet/dist/leaflet.css";
+
+/* ----------------------------------------------------------
+   Design tokens (colors, spacing, typography)
+---------------------------------------------------------- */
+
+:root {
+  /* Brand / accent palette */
+  --color-bg: #0f172a;              /* page background (dark navy) */
+  --color-surface: #0b1120;         /* inner background */
+  --color-card: #020617;            /* cards */
+  --color-border-subtle: #1f2937;
+  --color-border-strong: #4b5563;
+
+  --color-accent: #22c55e;          /* green accent */
+  --color-accent-soft: rgba(34, 197, 94, 0.12);
+
+  --color-text-main: #e5e7eb;
+  --color-text-muted: #9ca3af;
+  --color-text-soft: #6b7280;
+  --color-text-strong: #f9fafb;
+
+  --color-danger: #f97373;
+
+  /* Shadows */
+  --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.45);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+
+  /* Spacing scale */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI", sans-serif;
+
+  --text-xs: 0.8rem;    /* helper text, labels */
+  --text-sm: 0.95rem;   /* captions, subtitles */
+  --text-md: 1.05rem;   /* body text */
+  --text-lg: 1.35rem;   /* card titles, h3 */
+  --text-xl: 1.5rem;    /* section titles, h2 */
+  --text-2xl: 2.1rem;   /* app title */
+
+  /* Layout */
+  --max-width: 1200px;
+}
+
+/* ----------------------------------------------------------
+   Global reset & base styles
+---------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-size: var(--text-md);
+  background: radial-gradient(circle at top left, #1e293b 0, #020617 50%);
+  color: var(--color-text-main);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ----------------------------------------------------------
+   App shell
+---------------------------------------------------------- */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-lg);
+}
+
+.app-shell-inner {
+  max-width: var(--max-width);
+  width: 100%;
+  margin: 0 auto;
+  background: linear-gradient(145deg, #020617, #020617);
+  border-radius: 24px;
+  box-shadow: var(--shadow-soft);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+
+.app-header {
+  padding: var(--space-lg) var(--space-xl);
+  border-bottom: 1px solid rgba(55, 65, 81, 0.75);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  background: radial-gradient(circle at 0 0, rgba(34, 197, 94, 0.11), transparent 60%);
+}
+
+.app-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--color-text-strong);
+}
+
+.app-subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.app-badge {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: var(--color-text-muted);
+}
+
+/* Main content area */
+
+.app-main {
+  padding: var(--space-xl);
+}
+
+/* ----------------------------------------------------------
+   Typography & basic elements
+---------------------------------------------------------- */
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0 0 var(--space-sm);
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+h2 {
+  font-size: var(--text-xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+p {
+  margin: var(--space-xs) 0;
+  color: var(--color-text-main);
+}
+
+small {
+  font-size: var(--text-xs);
+  color: var(--color-text-soft);
+}
+
+/* Sections */
+
+section {
+  margin-bottom: var(--space-2xl);
+}
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.section-title {
+  font-size: calc(var(--text-xl) + 0.15rem);
+  font-weight: 650;
+  color: var(--color-text-strong);
+}
+
+.section-subtitle {
+  font-size: var(--text-md);
+  color: var(--color-text-muted);
+}
+
+/* Links */
+
+a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ----------------------------------------------------------
+   Cards, panels & layout utilities
+---------------------------------------------------------- */
+
+.card {
+  background: radial-gradient(circle at top left, #111827, #020617 55%);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  padding: var(--space-lg);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(16px);
+}
+
+.card-compact {
+  padding: var(--space-md);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-sm);
+}
+
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: 550;
+  color: var(--color-text-strong);
+}
+
+.card-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-soft);
+}
+
+/* KPI cards */
+
+.kpi-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+}
+
+.kpi-card {
+  background: radial-gradient(circle at 0 0, rgba(34, 197, 94, 0.07), #020617);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  padding: var(--space-md) var(--space-lg);
+  min-width: 180px;
+  flex: 1;
+  max-width: 260px;
+}
+
+.kpi-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--color-text-soft);
+  margin-bottom: 0.15rem;
+}
+
+.kpi-value {
+  font-size: 2rem;
+  font-weight: 650;
+  color: var(--color-text-strong);
+}
+
+.kpi-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}
+
+/* Grid helpers */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1.3fr 1.1fr;
+  gap: var(--space-lg);
+}
+
+.grid-2-even {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-lg);
+}
+
+/* Stack / flex helpers */
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+/* ----------------------------------------------------------
+   Filters bar
+---------------------------------------------------------- */
+
+.filters-bar {
+  margin-bottom: var(--space-xl);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  background: radial-gradient(circle at 0 0, rgba(34, 197, 94, 0.08), #020617);
+
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+
+  flex: 1 1 0;
+  min-width: 150px;
+  max-width: 220px;
+}
+
+.filter-label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--color-text-soft);
+}
+
+input[type="date"],
+select {
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background-color: #020617;
+  color: var(--color-text-main);
+  font-size: var(--text-sm);
+  outline: none;
+  min-width: 0;
+}
+
+input[type="date"]:focus,
+select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.7);
+}
+
+/* ----------------------------------------------------------
+   Buttons
+---------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 197, 94, 0.8);
+  background: radial-gradient(circle at 0 0, rgba(34, 197, 94, 0.3), #16a34a);
+  color: #022c22;
+  font-size: var(--text-sm);
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background 0.12s ease-out,
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out;
+}
+
+.btn:hover {
+  background: radial-gradient(circle at 0 0, rgba(34, 197, 94, 0.4), #22c55e);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.45);
+}
+
+.btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn-ghost {
+  border-color: rgba(148, 163, 184, 0.7);
+  background: transparent;
+  color: var(--color-text-main);
+}
+
+.btn-ghost:hover {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+/* ----------------------------------------------------------
+   Plotly & charts
+---------------------------------------------------------- */
+
+.plot-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+  background: radial-gradient(circle at 0 0, #020617, #020617);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.55);
+}
+
+/* Give Plotly div a min-height so loading feels stable */
+.plot-wrapper {
+  width: 100%;
+  min-height: 260px;
+}
+
+/* ----------------------------------------------------------
+   Leaflet map container
+---------------------------------------------------------- */
+
+.leaflet-container {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.6);
+}
+
+/* ----------------------------------------------------------
+   Messages & states
+---------------------------------------------------------- */
+
+.text-muted {
+  color: var(--color-text-soft);
+}
+
+.text-danger {
+  color: var(--color-danger);
+}
+
+.alert {
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.8);
+  font-size: var(--text-sm);
+}
+
+/* ----------------------------------------------------------
+   Responsive tweaks
+---------------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .app-main {
+    padding: var(--space-lg);
+  }
+
+  .grid-2,
+  .grid-2-even,
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: var(--space-md);
+  }
+
+  .app-shell-inner {
+    border-radius: 16px;
+  }
+
+  .filters-bar {
+    padding: var(--space-md);
+  }
+
+  .kpi-card {
+    min-width: 100%;
+  }
+}
