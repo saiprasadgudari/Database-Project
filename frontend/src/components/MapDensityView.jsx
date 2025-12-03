@@ -1,255 +1,157 @@
-import { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+// src/components/MapDensityView.jsx
+import { useEffect, useState } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  GeoJSON,
+} from "react-leaflet";
 import { taxiApi } from "../api/client";
 
-const BOROUGHS = [
-  "Manhattan",
-  "Brooklyn",
-  "Queens",
-  "Bronx",
-  "Staten Island",
-  "Unknown",
-];
-
 export default function MapDensityView({ filters }) {
-  const [geoJson, setGeoJson] = useState(null);
+  const [zoneData, setZoneData] = useState(null);
   const [densityRows, setDensityRows] = useState([]);
-  const [type, setType] = useState("pickup");
-  const [boroughFilter, setBoroughFilter] = useState("");
-  const [loadingGeo, setLoadingGeo] = useState(true);
+  const [loadingZones, setLoadingZones] = useState(true);
   const [loadingDensity, setLoadingDensity] = useState(true);
-  const [error, setError] = useState("");
+  const [type, setType] = useState("pickup");
+  const [borough, setBorough] = useState("all");
 
-  // ---- 1) Load static taxi_zones.geojson once ----
+  // Load GeoJSON from public folder once
   useEffect(() => {
-    setLoadingGeo(true);
     fetch("/taxi_zones.geojson")
-      .then((res) => {
-        if (!res.ok) throw new Error(`GeoJSON HTTP ${res.status}`);
-        return res.json();
+      .then((res) => res.json())
+      .then((data) => {
+        setZoneData(data);
+        setLoadingZones(false);
       })
-      .then((json) => {
-        console.log("[MapDensity] GeoJSON loaded. Top-level keys:", Object.keys(json));
-        if (json.features && json.features.length > 0) {
-          console.log("[MapDensity] Sample feature:", json.features[0]);
-        }
-        setGeoJson(json);
-      })
-      .catch((err) => {
-        console.error("[MapDensity] Error loading GeoJSON:", err);
-        setError("Failed to load taxi zone shapes.");
-      })
-      .finally(() => setLoadingGeo(false));
+      .catch((e) => {
+        console.error("Failed to load GeoJSON:", e);
+        setLoadingZones(false);
+      });
   }, []);
 
-  // ---- 2) Load density from /api/map-density on filter/type change ----
+  // Load density data whenever filters or type change
   useEffect(() => {
-    let cancelled = false;
     setLoadingDensity(true);
-
     const { start, end, weekday, hour, vendor_id, payment_id } = filters;
 
     taxiApi
       .mapDensity({
         type,
         limit: 150,
-        start: start || undefined,
-        end: end || undefined,
         weekday: weekday !== "" ? weekday : undefined,
         hour: hour !== "" ? hour : undefined,
         vendor_id: vendor_id || undefined,
         payment_id: payment_id || undefined,
+        start: start || undefined,
+        end: end || undefined,
       })
       .then((res) => {
-        if (cancelled) return;
-        const arr = res?.data || res?.rows || res || [];
-        setDensityRows(Array.isArray(arr) ? arr : []);
-        setError("");
-        console.log("[MapDensity] Loaded density rows:", arr.length);
+        setDensityRows(res.data || res.rows || res);
       })
       .catch((err) => {
-        if (cancelled) return;
-        console.error("[MapDensity] API error:", err);
-        setError(err.message || "Failed to load map density.");
+        console.error("Density API error:", err);
         setDensityRows([]);
       })
-      .finally(() => {
-        if (!cancelled) setLoadingDensity(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+      .finally(() => setLoadingDensity(false));
   }, [filters, type]);
 
-  // ---- 3) Build zone_id -> density map ----
-  const densityByZone = useMemo(() => {
-    const m = new Map();
-    densityRows.forEach((r) => {
-      const key = Number(r.zone_id);
-      if (!Number.isNaN(key)) m.set(key, r);
-    });
-    return m;
-  }, [densityRows]);
+  // Create a lookup map of LocationID → tripCount
+  const densityMap = {};
+  densityRows.forEach(({ zone_id, trip_count }) => {
+    densityMap[Number(zone_id)] = trip_count;
+  });
 
-  const maxCount = useMemo(() => {
-    if (!densityRows.length) return 1;
-    return Math.max(...densityRows.map((r) => Number(r.trip_count) || 0));
-  }, [densityRows]);
+  // Compute maximum count for color scaling
+  const maxCount = Math.max(...Object.values(densityMap), 0);
 
-  const { start, end, weekday, hour, vendor_id, payment_id } = filters;
+  // Style function for GeoJSON polygons
+  const getZoneStyle = (feature) => {
+    const locID = feature?.properties?.LocationID;
+    const zoneBorough = feature?.properties?.borough;
+    const count = densityMap[locID] || 0;
+    const intensity = maxCount > 0 ? count / maxCount : 0;
+    const fillOpacity = 0.25 + intensity * 0.45; // range 0.25–0.70
 
-  // ---- 4) Style function: MAKE ZONES VERY VISIBLE ----
-  const styleFeature = (feature) => {
-    const locId = Number(feature.properties.LocationID);
-    const row = densityByZone.get(locId);
-    const count = row ? Number(row.trip_count) || 0 : 0;
-
-    const borough =
-      row?.borough ||
-      feature.properties.boro_name ||
-      feature.properties.borough ||
-      "Unknown";
-
-    // If user selected a borough, dim others
-    const dimmed = boroughFilter && borough !== boroughFilter;
-
-    // If we have density data, use it; else show a strong grey outline
-    if (!row) {
-      return {
-        weight: dimmed ? 0.5 : 1.2,
-        color: dimmed ? "rgba(148,163,184,0.4)" : "#e5e7eb",
-        fillColor: "rgba(15,23,42,0.0)",
-        fillOpacity: dimmed ? 0.02 : 0.06,
-      };
+    // If a borough filter is active, hide other boroughs
+    if (borough !== "all" && zoneBorough !== borough) {
+      return { fillOpacity: 0, opacity: 0 };
     }
 
-    const intensity = maxCount > 0 ? count / maxCount : 0;
-    const clamped = Math.min(1, Math.max(0, intensity));
-
-    // Yellow → green heat scale
-    const hue = 55 - clamped * 45; // 55 ≈ taxi yellow, 10 ≈ green
-    const lightness = 45 + clamped * 10;
-    const fill = `hsl(${hue}, 96%, ${lightness}%)`;
-
     return {
-      weight: dimmed ? 0.7 : 1.4,
-      color: dimmed ? "rgba(234,179,8,0.35)" : "rgba(250,204,21,0.95)",
-      fillColor: dimmed ? "rgba(15,23,42,0.9)" : fill,
-      fillOpacity: dimmed ? 0.12 : 0.55 + 0.25 * clamped,
+      color: "#facc15",        // outline color
+      weight: 1,
+      fillColor: "#fbbf24",    // fill color (yellow)
+      fillOpacity,
     };
   };
 
-  // ---- 5) Tooltip for each polygon ----
-  const onEachFeature = (feature, layer) => {
-    const locId = Number(feature.properties.LocationID);
-    const row = densityByZone.get(locId);
-
-    const zoneName =
-      row?.zone_name ||
-      feature.properties.zone ||
-      feature.properties.Zone ||
-      "Unknown zone";
-
-    const borough =
-      row?.borough ||
-      feature.properties.boro_name ||
-      feature.properties.borough ||
-      "Unknown";
-
-    const count = row ? Number(row.trip_count) || 0 : 0;
-    const tripsLabel = count
-      ? `${count.toLocaleString()} trips`
-      : "No trips for current filters";
-
-    const html = `
-      <div style="font-size: 0.8rem;">
-        <strong>${zoneName}</strong><br/>
-        ${borough}<br/>
-        ${tripsLabel}
-      </div>
-    `;
-
-    layer.bindTooltip(html, {
-      direction: "top",
-      opacity: 1,
-      sticky: true,
-      className: "leaflet-tooltip",
-    });
+  const onEachZone = (feature, layer) => {
+    const locID = feature?.properties?.LocationID;
+    const zoneName = feature?.properties?.zone || feature?.properties?.zone_name;
+    const tripCount = densityMap[locID] || 0;
+    layer.bindTooltip(
+      `<strong>${zoneName ?? "Unknown"}</strong><br/>${tripCount.toLocaleString()} trips`,
+      { sticky: true }
+    );
   };
-
-  const isLoadingInitial = loadingGeo && !geoJson;
-  const isUpdatingDensity = loadingDensity && !!geoJson;
 
   return (
     <section>
-      <div className="section-header">
-        <div>
-          <h2 className="section-title">Zone Density Map</h2>
-          <p className="section-subtitle">
-            Taxi {type === "pickup" ? "pickup" : "dropoff"} density by TLC taxi zone.
-          </p>
+      <div className="section-header" style={{ marginBottom: "0.7rem" }}>
+      <div>
+        <h2 className="section-title">Zone Density Map</h2>
+        <p className="section-subtitle">
+          Taxi {type} density by TLC taxi zone.
+        </p>
+      </div>
+      <div className="row" style={{ gap: "0.75rem" }}>
+        <div className="filter-group">
+          <label className="filter-label">View</label>
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="pickup">Pickup density</option>
+            <option value="dropoff">Dropoff density</option>
+          </select>
         </div>
-
-        <div className="row">
-          <div className="filter-group" style={{ maxWidth: 180 }}>
-            <span className="filter-label">View</span>
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              <option value="pickup">Pickup density</option>
-              <option value="dropoff">Dropoff density</option>
-            </select>
-          </div>
-
-          <div className="filter-group" style={{ maxWidth: 200 }}>
-            <span className="filter-label">Borough</span>
-            <select
-              value={boroughFilter}
-              onChange={(e) => setBoroughFilter(e.target.value)}
-            >
-              <option value="">All boroughs</option>
-              {BOROUGHS.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="filter-group">
+          <label className="filter-label">Borough</label>
+          <select value={borough} onChange={(e) => setBorough(e.target.value)}>
+            <option value="all">All boroughs</option>
+            <option value="Manhattan">Manhattan</option>
+            <option value="Brooklyn">Brooklyn</option>
+            <option value="Queens">Queens</option>
+            <option value="Bronx">Bronx</option>
+            <option value="Staten Island">Staten Island</option>
+            <option value="EWR">EWR</option>
+            <option value="Unknown">Unknown</option>
+          </select>
         </div>
       </div>
+      </div>
 
-      {error && <p className="text-danger">{error}</p>}
-
-      {isLoadingInitial && (
-        <p className="text-muted">Loading taxi zones and density data…</p>
+      {(loadingZones || loadingDensity) && (
+        <p className="text-muted">Loading map data…</p>
       )}
 
-      {geoJson && (
-        <div className="card" style={{ padding: "0.7rem" }}>
-          <div style={{ height: 430 }}>
+      {!loadingZones && !loadingDensity && zoneData && (
+        <div className="card" style={{ padding: "0.75rem" }}>
+          <div style={{ height: 460 }}>
             <MapContainer
-              center={[40.73, -73.97]} // NYC-ish
-              zoom={10.7}
+              center={[40.73, -73.97]}
+              zoom={11}
               style={{ height: "100%", width: "100%" }}
+              scrollWheelZoom={true}
             >
               <TileLayer
-                attribution="&copy; OpenStreetMap contributors, &copy; CARTO"
                 url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                attribution='&copy; OpenStreetMap contributors, &copy; CARTO'
               />
-
               <GeoJSON
-                key={`${type}-${boroughFilter}-${start}-${end}-${weekday}-${hour}-${vendor_id}-${payment_id}`}
-                data={geoJson}
-                style={styleFeature}
-                onEachFeature={onEachFeature}
+                data={zoneData}
+                style={getZoneStyle}
+                onEachFeature={onEachZone}
               />
             </MapContainer>
           </div>
-
-          {isUpdatingDensity && (
-            <p className="text-muted" style={{ marginTop: "0.5rem" }}>
-              Updating density for current filters…
-            </p>
-          )}
         </div>
       )}
     </section>
